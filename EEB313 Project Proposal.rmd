@@ -1,0 +1,17 @@
+**EEB313: Project Proposal** 
+
+Yunjung Jo (1008751138), Victoria Cordova-Morote (1006907493), Andrew Batmunkh (1007610257)
+
+North American temperate bats are threatened by the invasive fungal pathogen *Pseudogymnoascus destructans* (Pd), which causes white-nose syndrome (WNS), a fungal skin disease affecting species such as the big brown bat (*Eptesicus fuscus*). As the disease progresses, the later stages of infection disrupt homeostasis and increase energy expenditure during torpor in their hibernation periods. Long-term studies on the impacts of WNS, along with capture data, contribute to broader initiatives aimed at quantifying the effects of diseases on wildlife across North American species.
+
+In the study by Simons and colleagues (2022), big brown bats were captured from 1990-2020, with data recorded on sex, reproductive status, age, mass, and forearm length. The data collection occurred from March to October each year, avoiding hibernation months. The records were paired with the invasion timeline of the WNS causing fungal pathogen *Pseudogymnoascus destructans*, impacting bats during and after hibernation. WNS is characterized by white fungal growth on the bats' body parts, causing physiological stress that increases frequency of arousals during hibernation, causing a loss of brown fat and higher mortality rates in temperate bat species. 
+
+With this information, we hypothesize that bats captured during the later stages of pathogen invasion (epidemic and invasion periods) will have lower body mass and forearm length (‘fa’) due to the effects of the disease compared to bats captured before the invasion (pre-invasion) or during its early stages. We predict that bats captured during the invasion and epidemic stages of the disease (2–4 years) and the establishment stage (5+ years) will exhibit lower average mass and forearm length due to the physiological impacts of infection. This is expected compared to bats captured before the invasion period.
+
+The 30-year dataset that we will use contains 30,497 individual records across 3,797 unique capture sites. The data also includes the point at which the white-nose syndrome was introduced, allowing for a comparative analysis. For our analysis, we will be focusing on columns describing the mass (‘mass’) and forearm length (‘fa’) of the bats pre and post-fungal pathogen introduction (‘disease\_time\_step’), along with age (‘age’), sex (‘sex’), and reproductive status (‘repstat’), as they are potential confounders.
+
+Dataset Source: 
+
+Link to DYRAD: [https://datadryad.org/stash/dataset/doi:10.5061/dryad.ngf1vhhvv](https://datadryad.org/stash/dataset/doi:10.5061/dryad.ngf1vhhvv) 
+
+Citation to Study: Simonis, J. L., et al. (2022). "Long-term effects of white-nose syndrome on bat populations." *Journal of Wildlife Management*, 86(5), 778-790.

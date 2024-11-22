@@ -1,0 +1,132 @@
+---
+title: "mid project"
+output: html_document
+date: "2024-11-22"
+---
+
+```{r}
+Big_data <- read_csv("/Users/andrewbatmunkh/Desktop/eeb313/Big.csv")
+head(Big_data)
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+```
+
+**Violin Plot of Log(Mass) by Disease Group and Sex**
+```{r}
+data_sex <- Big_data %>%
+  mutate(disease_group = ifelse(disease_time_step == "pre-invasion", 
+                                "Pre-Invasion", 
+                                "Post-Invasion")) %>%
+  mutate(log_mass = log(mass))
+
+ggplot(data_sex, aes(x = disease_group, y = log_mass, fill = disease_group)) +
+  geom_violin(trim = FALSE) +
+  geom_point(alpha = 0.01, position = "jitter") +  
+   stat_summary(fun = mean, geom = "crossbar", 
+               width = 0.3, color = "red", size = 0.3) +  
+  facet_wrap(~sex) +
+  labs(
+    title = "Violin Plot of Log(Mass) by Disease Group and Sex",
+    x = "Disease Group",
+    y = "Log(Mass)"
+  ) 
+```
+
+```{r}
+glm_model <- glm(log_mass ~ disease_group * sex, data = data_sex)
+
+summary(glm_model)
+```
+
+
+**Violin Plot of Log(Mass) by Disease Group and Age**
+```{r}
+data_age <- Big_data %>%
+  mutate(disease_group = ifelse(disease_time_step == "pre-invasion", 
+                                "Pre-Invasion", 
+                                "Post-Invasion")) %>%
+  mutate(log_mass = log(mass))
+
+ggplot(data_age, aes(x = disease_group, y = log_mass, fill = disease_group)) +
+ geom_violin(alpha = 1) +
+  geom_point(alpha = 0.01, position = "jitter") +
+  stat_summary(fun = mean, geom = "crossbar", 
+               width = 0.3, color = "red", size = 0.3) + 
+  facet_wrap(~age) +
+  labs(
+    title = "Violin Plot of Log(Mass) by Disease Group and Age",
+    x = "Disease Group",
+    y = "Log(Mass)"
+  ) 
+```
+
+```{r}
+glm_age <- glm(log_mass ~ disease_group * age, data = data_age)
+
+summary(glm_age)
+```
+**Violin Plot of Log(Mass) by Disease Group and Pregnancy Status**
+```{r}
+
+data_pregnant <- Big_data %>%
+  mutate(pregnancy_status = ifelse(repstat == "pregnant", 
+                                   "Pregnant", 
+                                   "Not Pregnant")) %>%
+  mutate(disease_group = ifelse(disease_time_step == "pre-invasion", 
+                                "Pre-Invasion", 
+                                "Post-Invasion")) %>%
+  mutate(log_mass = log(mass))
+
+ggplot(data_pregnant, aes(x = disease_group, y = log_mass, fill = disease_group)) +
+  geom_violin(alpha = 0.02) +
+  geom_point(alpha = 0.01, position = "jitter") +
+   stat_summary(fun = mean, geom = "crossbar", 
+               width = 0.3, color = "red", size = 0.3) + 
+  facet_wrap(~pregnancy_status) +
+  labs(
+    title = "Violin Plot of Log(Mass) by Disease Group and Pregnancy Status",
+    x = "Disease Group",
+    y = "Log(Mass)"
+  ) 
+```
+
+```{r}
+glm_pregnancy <- glm(log_mass ~ disease_group * pregnancy_status, data = data_pregnant)
+
+summary(glm_pregnancy)
+```
+**Violin Plot of Log(Mass) by Disease Group and Pregnancy Status with Mean Lines**
+```{r}
+data_pregnant <- Big_data %>%
+  mutate(pregnancy_status = ifelse(repstat == "pregnant", 
+                                   "Pregnant", 
+                                   "Not Pregnant")) %>%
+  mutate(disease_group = ifelse(disease_time_step == "pre-invasion", 
+                                "Pre-Invasion", 
+                                "Post-Invasion")) %>%
+  mutate(log_mass = log(mass))
+
+
+ggplot(data_pregnant, aes(x = disease_group, y = log_mass, fill = disease_group)) +
+  geom_violin(alpha = 0.02) +
+  geom_point(alpha = 0.01, position = "jitter") + 
+  stat_summary(fun = mean, geom = "crossbar", 
+               width = 0.3, color = "red", size = 0.3) + 
+  facet_wrap(~pregnancy_status) +
+  labs(
+    title = "Violin Plot of Log(Mass) by Disease Group and Pregnancy Status with Mean Lines",
+    x = "Disease Group",
+    y = "Log(Mass)"
+  ) 
+```
+
+```{r}
+glm_pregnancy_disease <- glm(log_mass ~ disease_group * pregnancy_status, data = data_pregnant)
+
+summary(glm_pregnancy_disease)
+
+```
+

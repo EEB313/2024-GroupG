@@ -1,0 +1,440 @@
+*R Script for Bat Mass Data Analysis (Group-G)*
+Group-G Members: [Andrew Batmunkh] [Yunjung Jo] [Victoria Cordova-Morote]
+Date: [2024-12-07]
+
+Description: This script analyzes bat mass data to evaluate the effects of sex, pregnancy status, and disease group (pre- vs. post-invasion) using statistical modeling and visualization. 
+Key tasks include:
+ 1. Preparing data by creating categorical variables and combinations.
+ 2. Fitting Gamma and Normal distributions using Maximum Likelihood Estimation (MLE)     and comparing model fits with Akaike Information Criterion (AIC).
+ 3. Computing profile likelihood-based confidence intervals for Gamma distribution       parameters.
+ 4. Fitting a Generalized Linear Mixed Model (GLMM) to incorporate random effects for     site-level grouping.
+ 5. Visualizing observed data, fitted distributions, and model predictions across        predictor groups.
+ 6. Combining results into a comprehensive data frame for further analysis.
+
+
+```{r}
+require(tidyverse)
+require(fitdistrplus)
+require(tidyverse)
+require(deSolve)
+library(lme4)
+```
+#read the data onto R as "data
+```{r}
+data <- read_csv("/Users/andrewbatmunkh/Desktop/eeb313/Big.csv")
+head(data)
+```
+
+#This code prepares data, fits Gamma and Normal distributions using MLE, compares model fits with AIC, computes confidence intervals for Gamma parameters, and combines results for further analysis.
+```{r}
+# Data preparation
+data_new <- data |> 
+  mutate(
+    disease_group = ifelse(disease_time_step == "pre-invasion", 
+                           "Pre-Invasion", 
+                           "Post-Invasion"),
+    pregnancy_status = ifelse(repstat == "pregnant", 
+                              "Pregnant", 
+                              "Not Pregnant")
+  )
+
+# Convert relevant columns to character type
+data_new$age <- as.character(data_new$age)
+data_new$sex <- as.character(data_new$sex)
+data_new$disease_group <- as.character(data_new$disease_group)
+data_new$pregnancy_status <- as.character(data_new$pregnancy_status)
+
+# Create all combinations of age, sex, disease group, and pregnancy status
+combos <- expand.grid(
+  age = as.character(unique(data_new$age)),
+  sex = as.character(unique(data_new$sex)),
+  disease_group = as.character(unique(data_new$disease_group)),
+  status = as.character(unique(data_new$pregnancy_status))
+)
+
+# Generate combinations of predictor variables and filter invalid combinations
+combos |> 
+  subset(!(sex == "male" & status == "Pregnant")) |> 
+  subset(!(sex == "female" & status == "Not Pregnant")) -> combos
+
+rownames(combos) <- NULL  
+
+# Function to find MLE and fit distributions
+MLE_finder <- function(age, sex, group, status) {
+  
+  # Filter data for the specified combination
+  # This will ensure only data relevant to the current group is analyzed.
+  data_new_new <- data_new[data_new$age == paste(as.character(age)) &
+                           data_new$sex == paste(as.character(sex)) &
+                           data_new$disease_group == paste(as.character(group)) &
+                           data_new$pregnancy_status == paste(as.character(status)), ]
+  
+  # Check if there is enough data for fitting on Gamma and Normal distributions
+  if (length(data_new_new$mass) < 2) {
+    print("Not enough data!")
+    return(NA)
+  } else {
+    
+    # Fit Gamma and Normal distributions
+    best_fit_Gamma <- fitdist(data_new$mass, distr = "gamma", method = "mle")
+    best_fit_Normal <- fitdist(data_new$mass, distr = "norm", method = "mle")
+    
+    # Compare AIC values to determine the better fit
+    betterFit <- best_fit_Gamma$aic < best_fit_Normal$aic - 2
+    print(betterFit)
+    
+    #  Gamma distribution fit
+    cbind(
+      prob = dgamma(seq(min(data_new_new$mass), max(data_new_new$mass), length = 100), 
+                    shape = best_fit_Gamma$estimate[1],
+                    rate = best_fit_Gamma$estimate[2]),
+      mass = seq(min(data_new_new$mass), max(data_new_new$mass), length = 100)
+    ) -> fitGamma
+    
+    # Normal distribution fit
+    cbind(
+      prob = dnorm(seq(min(data_new_new$mass), max(data_new_new$mass), length = 100), 
+                   mean = best_fit_Normal$estimate[1],
+                   sd = best_fit_Normal$estimate[2]),
+      mass = seq(min(data_new_new$mass), max(data_new_new$mass), length = 100)
+    ) -> fitNormal
+    
+    # Plot histogram with distribution fits
+    data_new_new |> 
+      ggplot(aes(x = mass)) +
+      geom_rug() +
+      geom_histogram(aes(y = ..density..)) +
+      geom_line(data = fitGamma, aes(x = mass, y = prob), color = "red") +
+      labs(title = paste0(group, " distribution of ", age, " ", sex, " masses")) -> p
+    
+    print(p)
+    
+    return(best_fit_Gamma)
+  }
+}
+
+# Apply MLE_finder to all combinations
+results <- NULL
+for (i in 1:nrow(combos)) {
+  MLE_finder(
+    age = combos[i, "age"], 
+    sex = combos[i, "sex"], 
+    group = combos[i, "disease_group"],
+    status = combos[i, "status"]
+  ) -> results[[i]]
+}
+
+# Function to find confidence intervals for Gamma distribution parameters
+CI_finder <- function(age, sex, group, status) {
+  
+  # Filter data for the specified combination
+  data_new_new <- data_new[data_new$age == paste(as.character(age)) &
+                           data_new$sex == paste(as.character(sex)) &
+                           data_new$disease_group == paste(as.character(group)) &
+                           data_new$pregnancy_status == paste(as.character(status)), ]
+  
+  # Check if there is enough data for CI calculation
+  if (length(data_new_new$mass) < 2) {
+    print("Not enough data!")
+    return(NA)
+  } else {
+    
+    # Reuse MLE_finder for parameter estimates
+    results <- MLE_finder(age, sex, group, status)
+    maxLL <- sum(dgamma(data_new_new$mass,
+                        shape = results$estimate[1], 
+                        rate = results$estimate[2], log = TRUE))
+    
+    shape <- results$estimate[1]
+    rate <- results$estimate[2]
+    
+    # Confidence intervals for shape parameter
+    LL_rate <- NULL
+    Shapes <- seq(shape / 2, shape * 2, length = 1000)
+    for (i in 1:length(Shapes)) {
+      sum(dgamma(data_new_new$mass,
+                 shape = Shapes[i], 
+                 rate = rate, log = TRUE)) -> LL_rate[i]
+    }
+    data.frame(LL = LL_rate, shape = Shapes, rate = rate) -> CI_shape
+    
+    # Confidence intervals for rate parameter
+    LL_shape <- NULL
+    Rates <- seq(rate / 2, rate * 2, length = 1000)
+    for (i in 1:length(Rates)) {
+      sum(dgamma(data_new_new$mass,
+                 shape = shape, 
+                 rate = Rates[i], log = TRUE)) -> LL_shape[i]
+    }
+    data.frame(LL = LL_shape, shape = shape, rate = Rates) -> CI_rate
+    
+    return(
+      cbind(
+        rbind(CI_shape, CI_rate), 
+        age = as.character(age), 
+        sex = as.character(sex), 
+        disease_group = as.character(group), 
+        status = as.character(status)
+      )
+    )
+  }
+}
+
+# Apply CI_finder to all combinations
+results_pt2 <- NULL
+for (i in 1:nrow(combos)) {
+  CI_finder(
+    age = combos[i, "age"], 
+    sex = combos[i, "sex"], 
+    group = combos[i, "disease_group"],
+    status = combos[i, "status"]
+  ) -> results_pt2[[i]]
+}
+
+# Combine results into a single data frame for analysis
+as.data.frame(do.call(rbind, results_pt2)) -> datAnalyze
+
+```
+# Subsets post-invasion adult male mass data, fits Gamma and Normal distributions, and visualizes the observed data with fitted density curves.
+```{r}
+# Subset the data for post-invasion adult males
+data_subset <- data_new[data_new$disease_group == "Post-Invasion" &
+                          data_new$age == "adult" &
+                          data_new$sex == "male", ]
+
+# Fit a normal distribution to the data
+fit_normal <- fitdist(data_subset$mass, distr = "norm", method = "mle")
+
+# Fit a gamma distribution to the data
+fit_gamma <- fitdist(data_subset$mass, distr = "gamma", method = "mle")
+
+#Generate a density function based on the fitted normal distribution
+fit_normal_data <- data.frame(
+  mass = seq(min(data_subset$mass), max(data_subset$mass), length.out = 100),
+  density = dnorm(seq(min(data_subset$mass), max(data_subset$mass), length.out = 100),
+                  mean = fit_normal$estimate["mean"],
+                  sd = fit_normal$estimate["sd"])
+)
+
+#Generate a density function based on the fitted gamma distribution
+fit_gamma_data <- data.frame(
+  mass = seq(min(data_subset$mass), max(data_subset$mass), length.out = 100),
+  density = dgamma(seq(min(data_subset$mass), max(data_subset$mass), length.out = 100),
+                   shape = fit_gamma$estimate["shape"],
+                   rate = fit_gamma$estimate["rate"])
+)
+
+#Plot the histogram of mass data with fitted density curves
+ggplot(data_subset, aes(x = mass)) +
+  geom_histogram(aes(y = ..density..), binwidth = 1, fill = "grey", alpha = 0.7, color = "black") +
+  geom_rug() + # Add rug plot
+  geom_line(data = fit_normal_data, aes(x = mass, y = density), color = "red", size = 1) +
+  geom_line(data = fit_gamma_data, aes(x = mass, y = density), color = "blue", size = 1) +
+  labs(
+    title = "Post-Invasion Distribution of Adult Male Masses",
+    x = "Mass",
+    y = "Density"
+  ) 
+```
+
+## Confidence Interval Analysis of the bat data and Visualization of Gamma Distribution Parameters
+```{r}
+# Ensure numeric type for Gamma distribution parameters
+datAnalyze$shape <- as.numeric(datAnalyze$shape)
+datAnalyze$rate <- as.numeric(datAnalyze$rate)
+
+# Identify Maximum Likelihood Estimates (MLEs) for each group
+datAnalyze |> 
+  group_by(age, sex, disease_group, status) |> 
+  mutate(MLE = case_when(
+    LL == max(LL) ~ "yes",
+    LL != max(LL) ~ "no"
+  )) |> 
+  subset(MLE == "yes") |> 
+  mutate(mean = shape / rate) |> 
+  ggplot(aes(x = sex, y = mean)) +
+  geom_point()  # Plot the mean (No CIs)
+
+# Extract only the MLE rows for further analysis
+datAnalyze |> 
+  group_by(age, sex, disease_group, status) |> 
+  mutate(MLE = case_when(
+    LL == max(LL) ~ "yes",
+    LL != max(LL) ~ "no"
+  )) |> 
+  subset(MLE == "yes") -> MLEs
+
+# Initialize storage for confidence intervals
+CIs_shape <- NULL
+CIs_rate <- NULL
+
+# Loop through MLEs to calculate confidence intervals for shape and rate
+for (j in 1:nrow(MLEs)) {
+  # Plot profile likelihood for shape
+  print(
+    datAnalyze |> 
+      subset(age == MLEs$age[j] & sex == MLEs$sex[j] &
+             disease_group == MLEs$disease_group[j] & 
+             status == MLEs$status[j]) |> 
+      subset(rate == MLEs$rate[j]) |> 
+      ggplot(aes(x = shape, y = LL)) + 
+      geom_line()
+      # geom_hline(yintercept = MLEs$LL[j] - 1.92, color = "red")
+  )
+
+  # Plot profile likelihood for rate
+  print(
+    datAnalyze |> 
+      subset(age == MLEs$age[j] & sex == MLEs$sex[j] & 
+             disease_group == MLEs$disease_group[j] & 
+             status == MLEs$status[j]) |> 
+      subset(shape == MLEs$shape[j]) |> 
+      ggplot(aes(x = rate, y = LL)) + 
+      geom_line()
+  )
+
+  # Confidence intervals for shape
+  datAnalyze |> 
+    subset(age == MLEs$age[j] & sex == MLEs$sex[j] & 
+           disease_group == MLEs$disease_group[j] & 
+           status == MLEs$status[j]) |> 
+    subset(rate == MLEs$rate[j]) |> 
+    summarise(upper_shape = max(shape), lower_shape = min(shape)) -> CIs_shape[[j]]
+
+  # Confidence intervals for rate
+  datAnalyze |> 
+    subset(age == MLEs$age[j] & sex == MLEs$sex[j] & 
+           disease_group == MLEs$disease_group[j] & 
+           status == MLEs$status[j]) |> 
+    subset(shape == MLEs$shape[j]) |> 
+    summarise(upper_rate = max(rate), lower_rate = min(rate)) -> CIs_rate[[j]]
+}
+
+# Combine MLEs with confidence intervals into a single data frame
+as.data.frame(cbind(MLEs, do.call(rbind, CIs_shape), do.call(rbind, CIs_rate)))[-8] -> ALLCIs
+
+# Note: shape/rate is the mean of the Gamma distribution, and shape/rate^2 is its variance
+
+# Plot mean of Gamma distribution by various groups
+ALLCIs |> 
+  ggplot(aes(x = disease_group, y = shape / rate)) + geom_point()
+ALLCIs |> 
+  ggplot(aes(x = sex, y = shape / rate)) + geom_point()
+ALLCIs |> 
+  ggplot(aes(x = age, y = shape / rate)) + geom_point()
+ALLCIs |> 
+  ggplot(aes(x = status, y = shape / rate)) + geom_point()
+
+# Plot variance of Gamma distribution by various groups
+ALLCIs |> 
+  ggplot(aes(x = disease_group, y = shape / rate^2)) + geom_point()
+ALLCIs |> 
+  ggplot(aes(x = sex, y = shape / rate^2)) + geom_point()
+ALLCIs |> 
+  ggplot(aes(x = age, y = shape / rate^2)) + geom_point()
+ALLCIs |> 
+  ggplot(aes(x = status, y = shape / rate^2)) + geom_point()
+
+# Plot shape parameter with confidence intervals
+ALLCIs |> 
+  ggplot(aes(
+    x = sex, y = shape,
+    ymin = lower_shape, ymax = upper_shape,
+    group = interaction(disease_group, age, status)
+  )) +
+  geom_point(position = position_dodge(width = 0.5)) +
+  geom_errorbar(width = 0.1, position = position_dodge(width = 0.5))
+
+# Plot scale parameter with confidence intervals
+ALLCIs |> 
+  ggplot(aes(
+    x = sex, y = 1 / rate,
+    ymin = 1 / lower_rate, ymax = 1 / upper_rate,
+    group = interaction(disease_group, age, status)
+  )) +
+  geom_point(position = position_dodge(width = 0.5)) +
+  geom_errorbar(width = 0.1, position = position_dodge(width = 0.5))
+
+# Plot mean with confidence intervals
+ALLCIs |> 
+  mutate(
+    scale = 1 / rate,
+    lower_scale = 1 / upper_rate,
+    upper_scale = 1 / lower_rate
+  ) |> 
+  ggplot(aes(
+    x = sex, y = shape * scale,
+    ymin = lower_shape * lower_scale,
+    ymax = upper_shape * upper_scale,
+    group = interaction(disease_group, age, status)
+  )) +
+  geom_point(position = position_dodge(width = 0.5)) +
+  geom_errorbar(width = 0.1, position = position_dodge(width = 0.5))
+
+# Plot variance with confidence intervals
+ALLCIs |> 
+  mutate(
+    scale = 1 / rate,
+    lower_scale = 1 / upper_rate,
+    upper_scale = 1 / lower_rate
+  ) |> 
+  ggplot(aes(
+    x = sex, y = shape * scale^2,
+    ymin = lower_shape * lower_scale^2,
+    ymax = upper_shape * upper_scale^2,
+    group = interaction(disease_group, age, status)
+  )) +
+  geom_point(position = position_dodge(width = 0.5)) +
+  geom_errorbar(width = 0.1, position = position_dodge(width = 0.5))
+
+```
+
+# This code fits a GLMM to model bat mass as a function of sex, pregnancy status, and disease group, including a random intercept for site_mask. 
+```{r}
+glmer(
+  mass ~ sex * pregnancy_status * disease_group + (1 | state), 
+  data = data_new, 
+  family = Gamma(link = "log")
+) -> model
+
+# Display the model summary
+summary(model)
+```
+
+# LMM of bat mass as a function of sex, pregnancy status, and disease group, including a random intercept for site_mask. This is used to compare the LMM and GLMM models
+```{r}
+lmer(
+  mass ~ sex * pregnancy_status * disease_group + (1 | site_mask), 
+  data = data_new
+) -> lmm_model
+
+# Display the model summary
+summary(lmm_model)
+
+```
+
+# This code runs the visualization of the predicted values with and without random effects across groups, faceted by sex and pregnancy status.
+```{r}
+# Predict values from the model, both with and without random effects
+as.data.frame(data_new)[, c("mass", "pregnancy_status",  "disease_group", "sex", "site_mask")] |> 
+  mutate(fit.m = predict(model, re.form = NA), # does not include random effects
+         fit.c = predict(model, re.form = NULL) # includes random effects
+         ) ->
+  predicted_values
+
+# Visualization of predicted values
+predicted_values |>
+  ggplot(aes(x = factor(disease_group, level = c("Pre-Invasion", "Post-Invasion")), 
+             group = site_mask)) +
+  geom_line(aes(y = fit.c,
+                color = site_mask, 
+                group = site_mask), 
+            size = 2) +
+  geom_line(aes(y = fit.m, group = ""), 
+            color = "black", size = 3) +
+  theme_classic() +
+  facet_grid(sex~pregnancy_status) +
+  theme(legend.position = "none" )
+```
+
+
